@@ -92,5 +92,6 @@ examples/demo/
 
 MIT
 
-## Auther
+## Author
+
 Haofei Sun
