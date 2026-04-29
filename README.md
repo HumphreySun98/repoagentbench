@@ -14,7 +14,7 @@ RepoAgentBench is local-first. The differentiator: **every merged PR can become 
 
 ## Status
 
-**v0.0.3 — early alpha.** Single-task runner, PR-to-task mining, and `verify.sh` auto-generation work end-to-end with the Claude Code adapter. A second real agent, multi-agent leaderboards, and statistical reporting are still coming. See [Roadmap](#roadmap).
+**v0.0.4 — early alpha.** Single-task runner, PR-to-task mining (including patch splitting so the starting state is "post-PR tests vs pre-PR source"), and `verify.sh` auto-generation work end-to-end with the Claude Code adapter. A second real agent, multi-agent leaderboards, and statistical reporting are still coming. See [Roadmap](#roadmap).
 
 ## Quickstart
 
@@ -85,6 +85,7 @@ examples/demo/
 - [x] v0.0.1 — single-task runner with `mock-fix` and `claude-code` adapters
 - [x] v0.0.2 — `repoagentbench infer --from-pr <url>` mines tasks from merged GitHub PRs
 - [x] v0.0.3 — `infer` auto-generates `verify.sh` for pytest / Go / Cargo / npm projects
+- [x] v0.0.4 — `infer` splits PR diff into test/source patches so PR-mined tasks have a valid pre-fix starting state
 - [ ] v0.1 — Aider adapter, second working agent for real comparisons
 - [ ] v0.2 — parallel multi-agent eval, Markdown leaderboard report
 - [ ] v0.3 — bootstrap CI, pairwise statistical comparison
