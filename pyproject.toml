@@ -1,14 +1,47 @@
 [project]
 name = "repoagentbench"
 version = "0.1.0"
-description = "Turn your merged PRs into reproducible coding-agent benchmarks"
+description = "SWE-bench for your codebase. Turn merged PRs into reproducible coding-agent benchmarks."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Haofei Sun", email = "humphreysun98@gmail.com" }]
+keywords = [
+    "ai-agents",
+    "coding-agent",
+    "code-evaluation",
+    "benchmark",
+    "swe-bench",
+    "claude-code",
+    "aider",
+    "developer-tools",
+    "agent-eval",
+    "llm-eval",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "click>=8.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/HumphreySun98/repoagentbench"
+Repository = "https://github.com/HumphreySun98/repoagentbench"
+Issues = "https://github.com/HumphreySun98/repoagentbench/issues"
 
 [project.optional-dependencies]
 dev = [

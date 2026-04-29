@@ -6,6 +6,8 @@ from typing import Optional
 
 from .base import Agent
 
+_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+
 
 # Discovery order: explicit env var, the conda env we recommend in the README,
 # whatever's on PATH. Aider's deps (litellm, etc.) tend to conflict with random
@@ -55,9 +57,10 @@ class AiderAgent(Agent):
         ]
         # Pass per-model overrides so frontier reasoning models (Opus 4.7,
         # GPT-5.x, Gemini 3.x) don't choke on aider's default temperature=0.
-        settings_file = Path.cwd() / "aider-model-settings.yml"
-        if settings_file.exists():
-            cmd.extend(["--model-settings-file", str(settings_file)])
+        # Resolution: explicit env var > cwd file > bundled package resource.
+        settings_path = _resolve_aider_settings()
+        if settings_path is not None:
+            cmd.extend(["--model-settings-file", str(settings_path)])
         # If the task workdir is not its own git repo, pass --no-git so aider
         # doesn't walk up the directory tree to a parent .git (which then makes
         # it use absolute paths it refuses to add to the chat). PR-mined tasks
@@ -93,6 +96,24 @@ class AiderAgent(Agent):
             "model": model,
             "returncode": proc.returncode,
         }
+
+
+def _resolve_aider_settings() -> Optional[Path]:
+    """Find the aider model-settings YAML. Resolution order:
+    1. RAB_AIDER_MODEL_SETTINGS env var (explicit override)
+    2. ./aider-model-settings.yml in the user's working directory (dev/edit case)
+    3. The copy bundled inside the installed package (PyPI install case)
+    """
+    explicit = os.environ.get("RAB_AIDER_MODEL_SETTINGS")
+    if explicit and Path(explicit).exists():
+        return Path(explicit)
+    cwd_file = Path.cwd() / "aider-model-settings.yml"
+    if cwd_file.exists():
+        return cwd_file
+    bundled = _PACKAGE_ROOT / "aider-model-settings.yml"
+    if bundled.exists():
+        return bundled
+    return None
 
 
 def _required_env_key(model: str) -> str:
