@@ -1,5 +1,9 @@
 # RepoAgentBench
 
+[![Tests](https://github.com/HumphreySun98/repoagentbench/actions/workflows/test.yml/badge.svg)](https://github.com/HumphreySun98/repoagentbench/actions/workflows/test.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 > **SWE-bench for your codebase.**
 
 Turn your merged PRs into reproducible coding-agent benchmarks. Find out which AI coding agent actually works on **your** repo, **your** tests, **your** constraints — with structured, replayable, diffable run artifacts instead of opaque chat logs.
