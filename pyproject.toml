@@ -5,7 +5,7 @@ description = "Turn your merged PRs into reproducible coding-agent benchmarks"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "humphrey" }]
+authors = [{ name = "Haofei Sun", email = "humphreysun98@gmail.com" }]
 dependencies = [
     "click>=8.1",
 ]
