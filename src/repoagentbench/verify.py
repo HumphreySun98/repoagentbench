@@ -1,6 +1,7 @@
 import os
 import subprocess
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -9,6 +10,9 @@ from typing import Optional
 class VerifyResult:
     passed: bool
     returncode: int
+    duration_seconds: float
+    command: list[str] = field(default_factory=list)
+    timed_out: bool = False
 
 
 def run_verify(
@@ -33,6 +37,7 @@ def run_verify(
     if env_overrides:
         env.update(env_overrides)
 
+    started = time.time()
     try:
         proc = subprocess.run(
             cmd,
@@ -42,11 +47,24 @@ def run_verify(
             timeout=timeout,
             env=env,
         )
+        duration = time.time() - started
         log_path.write_text(
             f"$ {' '.join(cmd)}\nreturncode: {proc.returncode}\n\n"
             f"--- STDOUT ---\n{proc.stdout}\n--- STDERR ---\n{proc.stderr}\n"
         )
-        return VerifyResult(passed=(proc.returncode == 0), returncode=proc.returncode)
+        return VerifyResult(
+            passed=(proc.returncode == 0),
+            returncode=proc.returncode,
+            duration_seconds=round(duration, 3),
+            command=cmd,
+        )
     except subprocess.TimeoutExpired:
+        duration = time.time() - started
         log_path.write_text(f"$ {' '.join(cmd)}\nTIMEOUT after {timeout}s\n")
-        return VerifyResult(passed=False, returncode=-1)
+        return VerifyResult(
+            passed=False,
+            returncode=-1,
+            duration_seconds=round(duration, 3),
+            command=cmd,
+            timed_out=True,
+        )
