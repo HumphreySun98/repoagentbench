@@ -91,3 +91,6 @@ examples/demo/
 ## License
 
 MIT
+
+## Auther
+Haofei Sun
