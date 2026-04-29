@@ -14,7 +14,7 @@ RepoAgentBench is local-first. The differentiator: **every merged PR can become 
 
 ## Status
 
-**v0.0.5 — early alpha.** Single-task runner with per-task venv isolation, PR-to-task mining (test/source patch splitting so the starting state is "post-PR tests vs pre-PR source"), and `verify.sh` auto-generation that handles `requirements*.txt`, `[project.optional-dependencies]`, and PEP 735 `[dependency-groups]`. Validated end-to-end on a real OSS PR (Click #3299). A second real agent, multi-agent leaderboards, and statistical reporting are still coming. See [Roadmap](#roadmap).
+**v0.0.6 — early alpha.** Single-task runner with per-task venv isolation, PR-to-task mining (test/source patch splitting so the starting state is "post-PR tests vs pre-PR source"), `verify.sh` auto-generation that handles `requirements*.txt`, `[project.optional-dependencies]`, and PEP 735 `[dependency-groups]`, and structured run artifacts (`manifest.json`, `events.jsonl`, `verification.json`, enhanced `status.json`). Validated end-to-end on a real OSS PR (Click #3299). A second real agent, multi-agent leaderboards, and statistical reporting are still coming. See [Roadmap](#roadmap).
 
 ## Quickstart
 
@@ -49,17 +49,23 @@ The `infer` command:
 
 > Requires the [`gh` CLI](https://cli.github.com/) installed and authenticated.
 
-Outputs go to `.runs/<run_id>/`:
+Outputs go to `.runs/<run_id>/`. Each run is a self-describing artifact bundle:
 
 ```
-.runs/<run_id>/
-  status.json        # final outcome
-  pre_verify.log     # tests before agent ran (must fail)
-  agent.log          # what the agent did
-  diff.patch         # what the agent changed
-  post_verify.log    # tests after agent ran (must pass)
-  workdir/           # isolated copy of the task
+.runs/<ISO_ts>__<task>__<agent>__<short_id>/
+  manifest.json        # run_id, task_id, agent, base_commit, started_at, harness_version
+  status.json          # final outcome: status, failure_stage, summary, durations
+  verification.json    # pre/post phases: command, passed, exit_code, duration
+  events.jsonl         # streaming lifecycle events (run.started, verify.*, agent.*, diff.captured, ...)
+  pre_verify.log       # raw test output before the agent ran (must fail)
+  post_verify.log      # raw test output after the agent ran (must pass)
+  agent.log            # what the agent did
+  diff.patch           # what the agent changed
+  venv_bootstrap.log   # per-task venv setup output
+  workdir/             # isolated copy of the task (with `.venv-rab/` inside)
 ```
+
+Run ids are sortable (`20260429T060601Z__click-pr-3299__mock-fix__daf638`) and human-readable. Each task is run inside its own `.venv-rab` venv so installing the project under test does not pollute your system Python.
 
 ## Task layout
 
@@ -87,6 +93,7 @@ examples/demo/
 - [x] v0.0.3 — `infer` auto-generates `verify.sh` for pytest / Go / Cargo / npm projects
 - [x] v0.0.4 — `infer` splits PR diff into test/source patches so PR-mined tasks have a valid pre-fix starting state
 - [x] v0.0.5 — per-task venv isolation; `verify.sh` handles `requirements*.txt` and PEP 735 `[dependency-groups]`; validated end-to-end on Click PR #3299
+- [x] v0.0.6 — structured run-dir (`manifest.json`, `events.jsonl`, `verification.json`); sortable human-readable `run_id`s
 - [ ] v0.1 — Aider adapter, second working agent for real comparisons
 - [ ] v0.2 — parallel multi-agent eval, Markdown leaderboard report
 - [ ] v0.3 — bootstrap CI, pairwise statistical comparison
