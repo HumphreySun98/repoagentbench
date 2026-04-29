@@ -153,4 +153,6 @@ MIT
 
 ## Author
 
-Haofei Sun — [github.com/HumphreySun98](https://github.com/HumphreySun98). Reach out about agent-eval / devtools / infra roles, RepoAgentBench feedback, or contributions.
+**Haofei Sun** — [humphreysun98@gmail.com](mailto:humphreysun98@gmail.com) · [github.com/HumphreySun98](https://github.com/HumphreySun98)
+
+Reach out about agent-eval / devtools / infra roles, RepoAgentBench feedback, or contributions.
