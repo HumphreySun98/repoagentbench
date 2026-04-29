@@ -18,7 +18,7 @@ from .verify import VerifyResult, run_verify
 
 VENV_DIR = ".venv-rab"
 SCHEMA_VERSION = "1"
-HARNESS_VERSION = "0.0.6"
+HARNESS_VERSION = "0.0.7"
 
 
 @dataclass
