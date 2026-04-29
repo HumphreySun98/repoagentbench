@@ -2,7 +2,9 @@
 
 > **SWE-bench for your codebase.**
 
-Turn your merged PRs into reproducible coding-agent benchmarks. Find out which AI coding agent — Claude Code, Codex, Aider, Gemini CLI — actually works on **your** repo, **your** tests, **your** constraints.
+Turn your merged PRs into reproducible coding-agent benchmarks. Find out which AI coding agent actually works on **your** repo, **your** tests, **your** constraints.
+
+Today: a Claude Code adapter and a `mock-fix` oracle baseline. Aider, Codex CLI, and Gemini CLI adapters are next — see [Roadmap](#roadmap).
 
 ## Why
 
@@ -12,7 +14,7 @@ RepoAgentBench is local-first. The differentiator: **every merged PR can become 
 
 ## Status
 
-**v0.0.1 — pre-alpha.** Single-task runner only. PR mining, multi-agent leaderboards, and statistical reporting all coming. See [Roadmap](#roadmap).
+**v0.0.3 — early alpha.** Single-task runner, PR-to-task mining, and `verify.sh` auto-generation work end-to-end with the Claude Code adapter. A second real agent, multi-agent leaderboards, and statistical reporting are still coming. See [Roadmap](#roadmap).
 
 ## Quickstart
 
@@ -34,7 +36,7 @@ repoagentbench infer \
     --from-pr https://github.com/octocat/Hello-World/pull/6 \
     --out tasks/octocat-hello-pr-6
 
-# Add a verify.sh that runs the project's tests, then:
+# Run it
 repoagentbench run-one --task tasks/octocat-hello-pr-6 --agent mock-fix
 ```
 
@@ -43,8 +45,7 @@ The `infer` command:
 - pulls the PR's title, body, base SHA, and unified diff via `gh`
 - clones the repo at the PR's base commit (the "broken" pre-fix state)
 - writes `goal.md` (PR title + body), `solution.patch` (the PR diff), and `task.json` (source metadata)
-
-The only thing left for you to provide is `verify.sh` — the test command that should pass once the agent reproduces the fix.
+- **auto-generates `verify.sh`** from the PR's modified test files, when it can detect the project's test framework (pytest / `go test` / `cargo test` / `npm test`). When it can't, it writes a `TODO.md` explaining what to fill in.
 
 > Requires the [`gh` CLI](https://cli.github.com/) installed and authenticated.
 
@@ -83,6 +84,7 @@ examples/demo/
 
 - [x] v0.0.1 — single-task runner with `mock-fix` and `claude-code` adapters
 - [x] v0.0.2 — `repoagentbench infer --from-pr <url>` mines tasks from merged GitHub PRs
+- [x] v0.0.3 — `infer` auto-generates `verify.sh` for pytest / Go / Cargo / npm projects
 - [ ] v0.1 — Aider adapter, second working agent for real comparisons
 - [ ] v0.2 — parallel multi-agent eval, Markdown leaderboard report
 - [ ] v0.3 — bootstrap CI, pairwise statistical comparison
