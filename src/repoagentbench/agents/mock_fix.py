@@ -10,9 +10,15 @@ class MockFixAgent(Agent):
     name = "mock-fix"
 
     def run(self, workdir: Path, goal: str, task_path: Path, log_path: Path) -> dict:
-        solution = task_path / "solution.patch"
-        if not solution.exists():
-            log_path.write_text("No solution.patch in task; mock-fix did nothing.\n")
+        # Prefer the source-only patch when present (PR-mined tasks split the
+        # PR diff into test/source so the test portion can pre-seed the workdir).
+        # Fall back to the full solution.patch for hand-authored tasks.
+        for candidate in ("solution_source.patch", "solution.patch"):
+            solution = task_path / candidate
+            if solution.exists():
+                break
+        else:
+            log_path.write_text("No solution patch in task; mock-fix did nothing.\n")
             return {"agent": self.name, "applied": False, "reason": "no_solution_patch"}
 
         proc = subprocess.run(
