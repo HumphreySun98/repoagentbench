@@ -14,7 +14,7 @@ RepoAgentBench is local-first. The differentiator: **every merged PR can become 
 
 ## Status
 
-**v0.0.6 — early alpha.** Single-task runner with per-task venv isolation, PR-to-task mining (test/source patch splitting so the starting state is "post-PR tests vs pre-PR source"), `verify.sh` auto-generation that handles `requirements*.txt`, `[project.optional-dependencies]`, and PEP 735 `[dependency-groups]`, and structured run artifacts (`manifest.json`, `events.jsonl`, `verification.json`, enhanced `status.json`). Validated end-to-end on a real OSS PR (Click #3299). A second real agent, multi-agent leaderboards, and statistical reporting are still coming. See [Roadmap](#roadmap).
+**v0.0.7 — early alpha.** Single-task runner with per-task venv isolation, PR-to-task mining (test/source patch splitting), `verify.sh` auto-generation (`requirements*.txt`, `[project.optional-dependencies]`, PEP 735 `[dependency-groups]`), structured run artifacts (`manifest.json`, `events.jsonl`, `verification.json`), and `report` / `replay` / `diff` subcommands that consume them. Validated end-to-end on a real OSS PR (Click #3299). A second real agent and statistical reporting are still coming. See [Roadmap](#roadmap).
 
 ## Quickstart
 
@@ -67,6 +67,19 @@ Outputs go to `.runs/<run_id>/`. Each run is a self-describing artifact bundle:
 
 Run ids are sortable (`20260429T060601Z__click-pr-3299__mock-fix__daf638`) and human-readable. Each task is run inside its own `.venv-rab` venv so installing the project under test does not pollute your system Python.
 
+## Aggregate, replay, compare
+
+```bash
+repoagentbench report                              # markdown leaderboard of every run
+repoagentbench report --task click-pr-3299         # filter to one task
+repoagentbench report --output report.md           # write to file
+
+repoagentbench replay --run <run_id_or_prefix>     # re-run the same task+agent
+repoagentbench diff   --run <id_a> --run <id_b>    # side-by-side comparison
+```
+
+`report` groups runs by task and includes a per-agent aggregate (runs, passed, pass rate, average duration). `replay` reads the original `manifest.json` so the same task and agent are reused — useful for measuring run-to-run variance or re-validating after upgrading the harness. `diff` highlights the fields that changed between two runs.
+
 ## Task layout
 
 ```
@@ -94,6 +107,7 @@ examples/demo/
 - [x] v0.0.4 — `infer` splits PR diff into test/source patches so PR-mined tasks have a valid pre-fix starting state
 - [x] v0.0.5 — per-task venv isolation; `verify.sh` handles `requirements*.txt` and PEP 735 `[dependency-groups]`; validated end-to-end on Click PR #3299
 - [x] v0.0.6 — structured run-dir (`manifest.json`, `events.jsonl`, `verification.json`); sortable human-readable `run_id`s
+- [x] v0.0.7 — `report` (markdown leaderboard), `replay` (re-run from manifest), `diff` (compare two runs) subcommands
 - [ ] v0.1 — Aider adapter, second working agent for real comparisons
 - [ ] v0.2 — parallel multi-agent eval, Markdown leaderboard report
 - [ ] v0.3 — bootstrap CI, pairwise statistical comparison
