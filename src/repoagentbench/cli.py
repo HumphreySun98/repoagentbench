@@ -58,10 +58,16 @@ def run_one(task_path: Path, agent: str, out_dir: Path):
 )
 def infer(pr_url: str, out_dir: Path):
     """Generate a task folder from a merged GitHub PR."""
-    result = infer_from_pr(pr_url, out_dir)
-    click.echo(f"Task generated: {result}")
-    click.echo("  goal.md, solution.patch, task.json + repo at PR base SHA")
-    click.echo(f"  Next: add verify.sh, then `repoagentbench run-one --task {result} --agent mock-fix`")
+    task_dir, inference = infer_from_pr(pr_url, out_dir)
+    click.echo(f"Task generated: {task_dir}")
+    click.echo("  goal.md, solution.patch, task.json, repo at PR base SHA")
+    if inference.script is not None:
+        click.echo(f"  verify.sh:     auto-generated for {inference.framework} "
+                   f"({len(inference.test_files)} test file(s) detected)")
+        click.echo(f"  Next: repoagentbench run-one --task {task_dir} --agent mock-fix")
+    else:
+        click.echo(f"  verify.sh:     NOT generated — {inference.note}")
+        click.echo(f"  Next: write {task_dir}/verify.sh, then run-one")
 
 
 if __name__ == "__main__":

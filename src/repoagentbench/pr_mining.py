@@ -8,14 +8,27 @@ already a goal (PR title/body), a solution (the diff), and a verification harnes
 
 import json
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 
 PR_URL_RE = re.compile(r"https?://github\.com/([^/]+)/([^/]+)/pull/(\d+)")
+DIFF_FILE_RE = re.compile(r"^diff --git a/(.+) b/", re.MULTILINE)
+
+TEST_FILE_PATTERNS = [
+    re.compile(r"(?:^|/)test_[^/]+\.py$"),
+    re.compile(r"_test\.py$"),
+    re.compile(r"\.(test|spec)\.(jsx?|tsx?|mjs|cjs)$"),
+    re.compile(r"(?:^|/)__tests__/.*\.(jsx?|tsx?|mjs|cjs)$"),
+    re.compile(r"_test\.go$"),
+    re.compile(r"(?:^|/)tests/.*\.rs$"),
+    re.compile(r"(?:^|/)spec/.*_spec\.rb$"),
+]
 
 
 @dataclass
@@ -36,7 +49,17 @@ class PRRef:
         return f"{self.owner}/{self.repo}"
 
 
-def infer_from_pr(pr_url: str, out_dir: Path) -> Path:
+@dataclass
+class VerifyInference:
+    """Result of attempting to auto-generate verify.sh from a PR diff."""
+
+    framework: Optional[str]
+    test_files: list[str]
+    script: Optional[str]
+    note: str
+
+
+def infer_from_pr(pr_url: str, out_dir: Path) -> tuple[Path, VerifyInference]:
     """Generate a task folder from a GitHub PR.
 
     Layout produced:
@@ -45,11 +68,9 @@ def infer_from_pr(pr_url: str, out_dir: Path) -> Path:
           goal.md            PR title + body, framed as the agent's task
           solution.patch     the PR's unified diff (works with mock-fix agent)
           task.json          source metadata
-          TODO.md            what the user needs to fill in (verify.sh)
+          verify.sh          auto-generated when framework + tests detected
+          TODO.md            written only when verify.sh could not be generated
           <repo contents>    codebase checked out at the PR's base SHA
-
-    The user must add `verify.sh` (or run pytest if that's the project's
-    convention) before this task can be evaluated end-to-end.
     """
     if shutil.which("gh") is None:
         raise RuntimeError(
@@ -95,9 +116,100 @@ def infer_from_pr(pr_url: str, out_dir: Path) -> Path:
         "title": pr_meta["title"],
         "state": pr_meta["state"],
     }, indent=2) + "\n")
-    (out_dir / "TODO.md").write_text(_render_todo())
 
-    return out_dir
+    inference = infer_verify(diff, out_dir)
+    if inference.script is not None:
+        verify_path = out_dir / "verify.sh"
+        verify_path.write_text(inference.script)
+        verify_path.chmod(0o755)
+    else:
+        (out_dir / "TODO.md").write_text(_render_todo(inference))
+
+    return out_dir, inference
+
+
+def infer_verify(diff: str, workdir: Path) -> VerifyInference:
+    """Auto-generate verify.sh body from a PR's diff and the cloned repo state."""
+    test_files = extract_test_files_from_diff(diff)
+    framework = detect_framework(workdir)
+
+    if framework is None:
+        return VerifyInference(
+            framework=None,
+            test_files=test_files,
+            script=None,
+            note="No supported framework detected (looked for pyproject.toml, package.json, go.mod, Cargo.toml).",
+        )
+
+    script = generate_verify_sh(test_files, framework)
+    if script is None:
+        return VerifyInference(
+            framework=framework,
+            test_files=test_files,
+            script=None,
+            note=f"Framework {framework!r} detected but no auto-generation rule defined.",
+        )
+
+    if test_files:
+        note = (
+            f"verify.sh auto-generated for {framework}; runs "
+            f"{len(test_files)} PR-modified test file(s)."
+        )
+    else:
+        note = (
+            f"verify.sh auto-generated for {framework}; PR did not touch test "
+            f"files, so the full {framework} suite will run."
+        )
+    return VerifyInference(framework=framework, test_files=test_files, script=script, note=note)
+
+
+def extract_test_files_from_diff(diff: str) -> list[str]:
+    """Return file paths from the diff that look like test files."""
+    files = DIFF_FILE_RE.findall(diff)
+    test_files = [f for f in files if any(p.search(f) for p in TEST_FILE_PATTERNS)]
+    seen = set()
+    deduped = []
+    for f in test_files:
+        if f not in seen:
+            seen.add(f)
+            deduped.append(f)
+    return deduped
+
+
+def detect_framework(workdir: Path) -> Optional[str]:
+    """Return a string identifying the project's test framework, based on files at the repo root."""
+    if (workdir / "Cargo.toml").exists():
+        return "cargo"
+    if (workdir / "go.mod").exists():
+        return "go"
+    if (workdir / "package.json").exists():
+        return "npm"
+    pytest_signals = ("pyproject.toml", "setup.py", "setup.cfg", "pytest.ini", "tox.ini")
+    if any((workdir / s).exists() for s in pytest_signals):
+        return "pytest"
+    if next(workdir.rglob("*.py"), None) is not None:
+        return "pytest"
+    if next(workdir.rglob("*.go"), None) is not None:
+        return "go"
+    return None
+
+
+def generate_verify_sh(test_files: list[str], framework: str) -> Optional[str]:
+    """Generate the body of verify.sh, or None if we cannot."""
+    header = "#!/bin/bash\n# Auto-generated by `repoagentbench infer`.\nset -euo pipefail\n"
+    if framework == "pytest":
+        if test_files:
+            paths = " ".join(shlex.quote(f) for f in test_files)
+            return header + f"python3 -m pytest -x --tb=short {paths}\n"
+        return header + "python3 -m pytest -x --tb=short\n"
+    if framework == "go":
+        return header + "go test ./...\n"
+    if framework == "cargo":
+        return header + "cargo test\n"
+    if framework == "npm":
+        # `npm test` runs whatever script the project defines; per-file targeting is project-specific.
+        return header + "npm install --silent\nnpm test --silent\n"
+    return None
 
 
 def _gh_pr_view(pr: PRRef) -> dict:
@@ -129,15 +241,24 @@ def _render_goal(pr_meta: dict) -> str:
     )
 
 
-def _render_todo() -> str:
-    return (
-        "# TODO before this task can be evaluated\n\n"
-        "1. Add a `verify.sh` script that runs the tests this PR added or "
-        "modified. Without it, `repoagentbench run-one` will fall back to a "
-        "bare `pytest` invocation, which may not match the project's "
-        "conventions.\n\n"
-        "2. Sanity-check that `solution.patch` applies cleanly:\n\n"
-        "       cd <task-folder> && patch -p1 --dry-run -i solution.patch\n\n"
-        "3. Smoke-test the harness with the mock-fix agent:\n\n"
-        "       repoagentbench run-one --task <task-folder> --agent mock-fix\n"
-    )
+def _render_todo(inference: VerifyInference) -> str:
+    lines = [
+        "# verify.sh was not auto-generated",
+        "",
+        f"Reason: {inference.note}",
+        "",
+    ]
+    if inference.test_files:
+        lines += [
+            "Detected test files in the PR diff (you can wire these into `verify.sh`):",
+            "",
+            *(f"- `{f}`" for f in inference.test_files),
+            "",
+        ]
+    lines += [
+        "Once you write `verify.sh`, smoke-test with:",
+        "",
+        "    repoagentbench run-one --task <task-folder> --agent mock-fix",
+        "",
+    ]
+    return "\n".join(lines)
