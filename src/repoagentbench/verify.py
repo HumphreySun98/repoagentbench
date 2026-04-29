@@ -1,8 +1,8 @@
-import shutil
+import os
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 
 @dataclass
@@ -11,19 +11,27 @@ class VerifyResult:
     returncode: int
 
 
-def run_verify(workdir: Path, log_path: Path, timeout: int = 300) -> VerifyResult:
+def run_verify(
+    workdir: Path,
+    log_path: Path,
+    timeout: int = 600,
+    env_overrides: Optional[dict] = None,
+) -> VerifyResult:
     """Run task verification.
 
-    Convention: if the task contains `verify.sh`, run it. Otherwise default to `pytest`
-    (falling back to `python -m pytest` when the `pytest` binary is not on PATH).
+    Convention: if the task contains `verify.sh`, run it. Otherwise default to
+    `python -m pytest` from whatever Python is first on PATH (the runner
+    prepends a per-task venv so this resolves to the venv's interpreter).
     """
     verify_script = workdir / "verify.sh"
     if verify_script.exists():
         cmd = ["bash", str(verify_script)]
-    elif shutil.which("pytest"):
-        cmd = ["pytest", "-x", "--tb=short"]
     else:
-        cmd = [sys.executable, "-m", "pytest", "-x", "--tb=short"]
+        cmd = ["python", "-m", "pytest", "-x", "--tb=short"]
+
+    env = os.environ.copy()
+    if env_overrides:
+        env.update(env_overrides)
 
     try:
         proc = subprocess.run(
@@ -32,6 +40,7 @@ def run_verify(workdir: Path, log_path: Path, timeout: int = 300) -> VerifyResul
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=env,
         )
         log_path.write_text(
             f"$ {' '.join(cmd)}\nreturncode: {proc.returncode}\n\n"

@@ -1,6 +1,8 @@
 import json
+import os
 import shutil
 import subprocess
+import sys
 import time
 import uuid
 from dataclasses import dataclass
@@ -8,6 +10,9 @@ from pathlib import Path
 
 from .agents import get_agent
 from .verify import run_verify
+
+
+VENV_DIR = ".venv-rab"
 
 
 @dataclass
@@ -36,12 +41,14 @@ def run_one_task(task_path: Path, agent_name: str, out_dir: Path) -> RunResult:
     shutil.copytree(
         task_path,
         workdir,
-        ignore=shutil.ignore_patterns(".runs", "__pycache__", "*.pyc", ".pytest_cache"),
+        ignore=shutil.ignore_patterns(".runs", "__pycache__", "*.pyc", ".pytest_cache", VENV_DIR),
     )
 
     started = time.time()
 
-    pre = run_verify(workdir, run_dir / "pre_verify.log")
+    venv_env = _bootstrap_venv(workdir, run_dir / "venv_bootstrap.log")
+
+    pre = run_verify(workdir, run_dir / "pre_verify.log", env_overrides=venv_env)
 
     agent = get_agent(agent_name)
     agent_result = agent.run(
@@ -53,7 +60,7 @@ def run_one_task(task_path: Path, agent_name: str, out_dir: Path) -> RunResult:
 
     _compute_diff(task_path, workdir, run_dir / "diff.patch")
 
-    post = run_verify(workdir, run_dir / "post_verify.log")
+    post = run_verify(workdir, run_dir / "post_verify.log", env_overrides=venv_env)
 
     duration = time.time() - started
 
@@ -87,6 +94,47 @@ def run_one_task(task_path: Path, agent_name: str, out_dir: Path) -> RunResult:
     }, indent=2))
 
     return result
+
+
+def _bootstrap_venv(workdir: Path, log_path: Path) -> dict:
+    """Create an isolated venv inside workdir and return env vars that point
+    pip / python / pytest at it. Without this, `pip install -e .` from a task's
+    verify.sh pollutes the system Python and breaks the harness itself."""
+    venv_path = workdir / VENV_DIR
+    bin_dir = venv_path / ("Scripts" if os.name == "nt" else "bin")
+
+    create = subprocess.run(
+        [sys.executable, "-m", "venv", "--clear", str(venv_path)],
+        capture_output=True, text=True,
+    )
+    if create.returncode != 0:
+        log_path.write_text(
+            f"$ {sys.executable} -m venv {venv_path}\nreturncode: {create.returncode}\n\n"
+            f"--- STDOUT ---\n{create.stdout}\n--- STDERR ---\n{create.stderr}\n"
+        )
+        raise RuntimeError(f"Failed to create venv at {venv_path}")
+
+    pip = str(bin_dir / "pip")
+    install = subprocess.run(
+        [pip, "install", "--quiet", "--upgrade", "pip", "pytest"],
+        capture_output=True, text=True,
+    )
+    log_path.write_text(
+        f"$ python -m venv {venv_path}\nreturncode: {create.returncode}\n\n"
+        f"$ {pip} install --upgrade pip pytest\nreturncode: {install.returncode}\n\n"
+        f"--- STDOUT ---\n{install.stdout}\n--- STDERR ---\n{install.stderr}\n"
+    )
+    if install.returncode != 0:
+        raise RuntimeError(f"Failed to bootstrap pip/pytest in venv at {venv_path}")
+
+    parent_path = os.environ.get("PATH", "")
+    return {
+        "PATH": f"{bin_dir}{os.pathsep}{parent_path}",
+        "VIRTUAL_ENV": str(venv_path),
+        # Don't let user-site or PYTHONPATH leak the system's repoagentbench/click
+        # back into the venv interpreter.
+        "PYTHONNOUSERSITE": "1",
+    }
 
 
 def _compute_diff(original: Path, modified: Path, out: Path) -> None:
