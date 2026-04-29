@@ -12,25 +12,26 @@ Today: `mock-fix` (oracle baseline), `claude-code`, and `aider` adapters. Codex 
 
 ## Sample leaderboard
 
-One `repoagentbench report` after running `mock-fix` (the oracle that applies the PR's actual diff) and `aider` (Claude Sonnet 4.6) on a real merged PR (Click #3299) and a synthetic demo task:
+A frontier-model sweep on Click PR #3299 ([Fix speculative empty string check](https://github.com/pallets/click/pull/3299), merged 2026-04-08), driven by `aider` against four current flagship models plus a `mock-fix` oracle that applies the PR's actual diff:
 
-| Task | Agent | Status | Pre | Post | Files | Duration |
-|---|---|---|---|---|---|---|
-| click-pr-3299 | mock-fix | **PASS** | FAIL | PASS | 1 | 8.8s |
-| click-pr-3299 | aider (sonnet-4-6) | **FAIL** | FAIL | FAIL | 2 | 610s |
-| demo | mock-fix | **PASS** | FAIL | PASS | 1 | 4.1s |
-| demo | aider (sonnet-4-6) | **FAIL** | FAIL | FAIL | 1 | 8.8s |
+| Agent | Model | Status | Duration | Cost | What it did |
+|---|---|---|---|---|---|
+| mock-fix | (oracle) | **PASS** | 8.8s | — | Applies the actual PR diff: `isinstance(default, str) and default == ""` |
+| aider | `anthropic/claude-sonnet-4-6` | **FAIL** | 610s | $0.72 | Wrote `try/except TypeError` — but the test class raises `ValueError`, so the exception still propagates |
+| aider | `anthropic/claude-opus-4-7` | **FAIL** | 36s | $0.58 | Replaced `default == ""` with `default == str()` — completely equivalent at runtime; comment claimed it "avoids TypeError" but it's a no-op |
+| aider | `openai/gpt-5.5` | **PASS** | 272s | $1.58 | Wrote the canonical PR fix verbatim: `isinstance(default, str) and default == ""` |
+| aider | `gemini/gemini-3.1-pro-preview` | **FAIL** | 939s | $0.03+ | Edited the wrong function entirely — patched a `value == ""` check inside `_value_is_missing()` (line 2408), but the bug is in `get_help_extra()` (line 3113); the test still calls into the unpatched code path |
 
-| Agent | Runs | Passed | Pass rate | Avg duration |
-|---|---|---|---|---|
-| mock-fix | 2 | 2 | 100% | 6.5s |
-| aider/sonnet-4-6 | 2 | 0 | 0% | 309s |
+Aggregate across the four frontier-flagship runs:
 
-**Why aider failed on click PR #3299:** the bug is `default == ""` raising `ValueError` on objects with a custom `__eq__`. Aider produced a defensive `try/except TypeError` — but the test class raises `ValueError`, so one assertion still fails. The actual one-line PR fix added an `isinstance(default, str)` short-circuit instead of catching exceptions.
+| Vendor flagship | Pass rate on Click PR #3299 |
+|---|---|
+| OpenAI GPT-5.5 | 1 / 1 |
+| Anthropic Opus 4.7 | 0 / 1 |
+| Anthropic Sonnet 4.6 | 0 / 1 |
+| Google Gemini 3.1 Pro | 0 / 1 |
 
-**Why aider failed on the demo task:** Sonnet's whole-file edit reply truncated an unrelated `multiply()` function while fixing `add()`. The test importing `multiply` then errors at collection.
-
-Both are real-codebase failure modes you cannot see on public benchmarks. They surface here because every run executes the project's actual test suite and the run artifacts (`diff.patch`, `agent.log`, `events.jsonl`) capture exactly what each agent did and why it failed.
+This is exactly the failure topology public benchmarks hide. The PR is a one-line bug fix, the failure mode is a Python edge case (custom `__eq__` raising `ValueError`), and **three of the four current vendor flagships failed in three different ways**: Sonnet 4.6 over-engineered the wrong exception class, Opus 4.7 produced a no-op fix that "looks right," and Gemini 3.1 Pro patched the wrong function entirely. Only GPT-5.5 reproduced the canonical PR fix. The harness surfaces this because every run executes the project's real test suite against each agent's actual diff — captured in [`diff.patch`](#run-artifacts), [`agent.log`](#run-artifacts), and [`events.jsonl`](#run-artifacts) for every run.
 
 ## Why
 
