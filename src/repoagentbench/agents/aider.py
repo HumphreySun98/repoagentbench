@@ -48,6 +48,10 @@ class AiderAgent(Agent):
             "--no-stream",
             "--no-show-model-warnings",
             "--no-check-update",
+            "--no-detect-urls",  # goal.md often contains the source PR URL;
+            # without this flag aider tries to scrape it, which adds 30s+ of
+            # latency, may trigger Playwright install prompts, and exfiltrates
+            # the run via an outbound HTTP request we did not ask for.
         ]
         # Pass per-model overrides so frontier reasoning models (Opus 4.7,
         # GPT-5.x, Gemini 3.x) don't choke on aider's default temperature=0.
