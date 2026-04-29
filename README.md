@@ -26,6 +26,28 @@ repoagentbench run-one --task examples/demo --agent mock-fix
 repoagentbench run-one --task examples/demo --agent claude-code
 ```
 
+## Mine a benchmark task from any merged GitHub PR
+
+```bash
+# Generate a task folder from a real PR
+repoagentbench infer \
+    --from-pr https://github.com/octocat/Hello-World/pull/6 \
+    --out tasks/octocat-hello-pr-6
+
+# Add a verify.sh that runs the project's tests, then:
+repoagentbench run-one --task tasks/octocat-hello-pr-6 --agent mock-fix
+```
+
+The `infer` command:
+
+- pulls the PR's title, body, base SHA, and unified diff via `gh`
+- clones the repo at the PR's base commit (the "broken" pre-fix state)
+- writes `goal.md` (PR title + body), `solution.patch` (the PR diff), and `task.json` (source metadata)
+
+The only thing left for you to provide is `verify.sh` — the test command that should pass once the agent reproduces the fix.
+
+> Requires the [`gh` CLI](https://cli.github.com/) installed and authenticated.
+
 Outputs go to `.runs/<run_id>/`:
 
 ```
@@ -60,7 +82,8 @@ examples/demo/
 ## Roadmap
 
 - [x] v0.0.1 — single-task runner with `mock-fix` and `claude-code` adapters
-- [ ] v0.1 — PR-mining (`repoagentbench infer --from-pr 123`), Aider adapter
+- [x] v0.0.2 — `repoagentbench infer --from-pr <url>` mines tasks from merged GitHub PRs
+- [ ] v0.1 — Aider adapter, second working agent for real comparisons
 - [ ] v0.2 — parallel multi-agent eval, Markdown leaderboard report
 - [ ] v0.3 — bootstrap CI, pairwise statistical comparison
 - [ ] v0.4 — real-repo demo suite (3 OSS repos × historical PRs)

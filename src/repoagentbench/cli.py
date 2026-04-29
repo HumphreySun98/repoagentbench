@@ -2,6 +2,7 @@ from pathlib import Path
 
 import click
 
+from .pr_mining import infer_from_pr
 from .runner import run_one_task
 
 
@@ -41,6 +42,26 @@ def run_one(task_path: Path, agent: str, out_dir: Path):
     click.echo(f"post_verify: {'PASS' if result.post_verify_passed else 'FAIL'}  (expected PASS)")
     click.echo(f"status:      {result.status}")
     click.echo(f"duration:    {result.duration_seconds:.1f}s")
+
+
+@main.command("infer")
+@click.option(
+    "--from-pr", "pr_url",
+    required=True,
+    help="Full GitHub PR URL, e.g. https://github.com/owner/repo/pull/123",
+)
+@click.option(
+    "--out", "out_dir",
+    required=True,
+    type=click.Path(path_type=Path),
+    help="Output task folder (must not exist or be empty).",
+)
+def infer(pr_url: str, out_dir: Path):
+    """Generate a task folder from a merged GitHub PR."""
+    result = infer_from_pr(pr_url, out_dir)
+    click.echo(f"Task generated: {result}")
+    click.echo("  goal.md, solution.patch, task.json + repo at PR base SHA")
+    click.echo(f"  Next: add verify.sh, then `repoagentbench run-one --task {result} --agent mock-fix`")
 
 
 if __name__ == "__main__":
