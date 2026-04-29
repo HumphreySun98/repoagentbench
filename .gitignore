@@ -10,3 +10,4 @@ tasks/
 venv/
 .env
 .pytest_cache/
+.aider*

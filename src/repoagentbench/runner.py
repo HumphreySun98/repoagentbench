@@ -18,7 +18,7 @@ from .verify import VerifyResult, run_verify
 
 VENV_DIR = ".venv-rab"
 SCHEMA_VERSION = "1"
-HARNESS_VERSION = "0.0.7"
+HARNESS_VERSION = "0.1.0"
 
 
 @dataclass
@@ -223,6 +223,7 @@ def _compute_diff(original: Path, modified: Path, out: Path) -> dict:
             "--exclude=.pytest_cache",
             f"--exclude={VENV_DIR}",
             "--exclude=.git",
+            "--exclude=.aider*",  # aider's session files (history, cache) are not the agent's "diff"
             str(original), str(modified),
         ],
         capture_output=True,

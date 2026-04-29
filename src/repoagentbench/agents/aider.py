@@ -1,0 +1,96 @@
+import os
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Optional
+
+from .base import Agent
+
+
+# Discovery order: explicit env var, the conda env we recommend in the README,
+# whatever's on PATH. Aider's deps (litellm, etc.) tend to conflict with random
+# project deps, so a dedicated env is cleaner than a system-wide install.
+DEFAULT_CONDA_BIN = Path.home() / "miniforge/envs/aider-rab/bin/aider"
+FALLBACK_CONDA_BINS = [
+    Path.home() / "miniconda3/envs/aider-rab/bin/aider",
+    Path.home() / "anaconda3/envs/aider-rab/bin/aider",
+]
+DEFAULT_MODEL = "anthropic/claude-sonnet-4-6"
+
+
+class AiderAgent(Agent):
+    name = "aider"
+
+    def run(self, workdir: Path, goal: str, task_path: Path, log_path: Path) -> dict:
+        aider_bin = _find_aider()
+        if aider_bin is None:
+            log_path.write_text(
+                "aider binary not found.\n"
+                "Install:  conda create -n aider-rab python=3.11 -y\n"
+                "          conda run -n aider-rab pip install aider-chat\n"
+                "Or set RAB_AIDER_BIN to an aider executable.\n"
+            )
+            return {"agent": self.name, "error": "aider_not_installed"}
+
+        if "ANTHROPIC_API_KEY" not in os.environ:
+            log_path.write_text(
+                "ANTHROPIC_API_KEY is not set; aider needs it to call Claude.\n"
+            )
+            return {"agent": self.name, "error": "no_api_key"}
+
+        model = os.environ.get("RAB_AIDER_MODEL", DEFAULT_MODEL)
+        cmd = [
+            aider_bin,
+            "--message", goal,
+            "--yes-always",
+            "--no-auto-commits",
+            "--no-pretty",
+            "--no-stream",
+            "--no-show-model-warnings",
+            "--no-check-update",
+        ]
+        # If the task workdir is not its own git repo, pass --no-git so aider
+        # doesn't walk up the directory tree to a parent .git (which then makes
+        # it use absolute paths it refuses to add to the chat). PR-mined tasks
+        # have their own .git and should keep it for repo-map context.
+        if not (workdir / ".git").exists():
+            cmd.append("--no-git")
+        cmd.extend(["--model", model])
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=workdir,
+                capture_output=True,
+                text=True,
+                timeout=600,
+                env=os.environ.copy(),
+            )
+        except subprocess.TimeoutExpired:
+            log_path.write_text(
+                f"$ {aider_bin} --message ... --model {model}\n"
+                f"TIMEOUT after 600s\n"
+            )
+            return {"agent": self.name, "model": model, "error": "timeout"}
+
+        log_path.write_text(
+            f"$ {aider_bin} --message <goal> --model {model} "
+            f"--yes-always --no-auto-commits --no-pretty --no-stream\n"
+            f"returncode: {proc.returncode}\n\n"
+            f"--- STDOUT ---\n{proc.stdout}\n"
+            f"--- STDERR ---\n{proc.stderr}\n"
+        )
+        return {
+            "agent": self.name,
+            "model": model,
+            "returncode": proc.returncode,
+        }
+
+
+def _find_aider() -> Optional[str]:
+    explicit = os.environ.get("RAB_AIDER_BIN")
+    if explicit and Path(explicit).exists():
+        return explicit
+    for candidate in [DEFAULT_CONDA_BIN, *FALLBACK_CONDA_BINS]:
+        if candidate.exists():
+            return str(candidate)
+    return shutil.which("aider")

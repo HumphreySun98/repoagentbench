@@ -2,6 +2,7 @@ from pathlib import Path
 
 import click
 
+from .agents import AGENT_NAMES
 from .pr_mining import infer_from_pr
 from .runner import run_one_task
 from .runs import RunSummary, list_runs, render_diff, render_report, resolve_run_dir
@@ -23,7 +24,7 @@ def main():
 @click.option(
     "--agent",
     default="mock-fix",
-    type=click.Choice(["claude-code", "mock-fix"]),
+    type=click.Choice(list(AGENT_NAMES)),
     show_default=True,
     help="Which agent to invoke.",
 )

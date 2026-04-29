@@ -1,6 +1,6 @@
 [project]
 name = "repoagentbench"
-version = "0.0.7"
+version = "0.1.0"
 description = "Turn your merged PRs into reproducible coding-agent benchmarks"
 readme = "README.md"
 requires-python = ">=3.10"
