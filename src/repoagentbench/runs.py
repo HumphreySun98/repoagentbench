@@ -19,6 +19,7 @@ class RunSummary:
     task_id: str
     task_path: Path
     agent: str
+    model: Optional[str]
     base_commit: Optional[str]
     started_at: Optional[str]
     status: str
@@ -40,12 +41,14 @@ class RunSummary:
         diff_stats = _scan_diff_event(run_dir / "events.jsonl")
         pre = status.get("pre_verify", {})
         post = status.get("post_verify", {})
+        agent_result = status.get("agent_result") or {}
         return cls(
             run_id=manifest["run_id"],
             run_dir=run_dir,
             task_id=manifest["task_id"],
             task_path=Path(manifest["task_path"]),
             agent=manifest["agent"],
+            model=agent_result.get("model"),
             base_commit=manifest.get("base_commit"),
             started_at=manifest.get("started_at"),
             status=status["status"],
@@ -134,32 +137,35 @@ def render_report(summaries: list[RunSummary], task_filter: Optional[str] = None
         if runs[0].base_commit:
             lines.append(f"Base commit: `{runs[0].base_commit[:12]}`")
             lines.append("")
-        lines.append("| Run | Agent | Status | Pre | Post | Files | Duration |")
-        lines.append("|---|---|---|---|---|---|---|")
+        lines.append("| Run | Agent | Model | Status | Pre | Post | Files | Duration |")
+        lines.append("|---|---|---|---|---|---|---|---|")
         for r in sorted(runs, key=lambda x: x.run_id):
             pre = "FAIL" if not r.pre_verify_passed else "PASS"
             post = "PASS" if r.post_verify_passed else "FAIL"
             files = str(r.files_changed) if r.files_changed is not None else "—"
             short = r.run_id.split("__")[0]
+            model = r.model or "—"
             lines.append(
-                f"| `{short}` | {r.agent} | **{r.status}** | {pre} | {post} | {files} | {r.duration_seconds:.1f}s |"
+                f"| `{short}` | {r.agent} | `{model}` | **{r.status}** | {pre} | {post} | {files} | {r.duration_seconds:.1f}s |"
             )
         lines.append("")
 
-    by_agent: dict[str, list[RunSummary]] = {}
+    # Aggregate by (agent, model) so frontier sweeps across models show separately.
+    by_combo: dict[tuple[str, str], list[RunSummary]] = {}
     for s in summaries:
-        by_agent.setdefault(s.agent, []).append(s)
-    if len(by_agent) > 1 or len(summaries) > 1:
-        lines.append("## Aggregate by agent")
+        by_combo.setdefault((s.agent, s.model or "—"), []).append(s)
+    if len(by_combo) > 1 or len(summaries) > 1:
+        lines.append("## Aggregate by agent + model")
         lines.append("")
-        lines.append("| Agent | Runs | Passed | Pass rate | Avg duration |")
-        lines.append("|---|---|---|---|---|")
-        for agent, runs in sorted(by_agent.items()):
+        lines.append("| Agent | Model | Runs | Passed | Pass rate | Avg duration |")
+        lines.append("|---|---|---|---|---|---|")
+        for (agent, model), runs in sorted(by_combo.items()):
             passed = sum(1 for r in runs if r.status == "PASS")
             total = len(runs)
             rate = (passed / total * 100) if total else 0.0
             avg_dur = sum(r.duration_seconds for r in runs) / total if total else 0.0
-            lines.append(f"| {agent} | {total} | {passed} | {rate:.0f}% | {avg_dur:.1f}s |")
+            model_cell = f"`{model}`" if model != "—" else "—"
+            lines.append(f"| {agent} | {model_cell} | {total} | {passed} | {rate:.0f}% | {avg_dur:.1f}s |")
         lines.append("")
 
     return "\n".join(lines)

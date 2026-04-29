@@ -32,13 +32,13 @@ class AiderAgent(Agent):
             )
             return {"agent": self.name, "error": "aider_not_installed"}
 
-        if "ANTHROPIC_API_KEY" not in os.environ:
-            log_path.write_text(
-                "ANTHROPIC_API_KEY is not set; aider needs it to call Claude.\n"
-            )
-            return {"agent": self.name, "error": "no_api_key"}
-
         model = os.environ.get("RAB_AIDER_MODEL", DEFAULT_MODEL)
+        required_key = _required_env_key(model)
+        if required_key and required_key not in os.environ:
+            log_path.write_text(
+                f"{required_key} is not set; aider needs it to call {model}.\n"
+            )
+            return {"agent": self.name, "model": model, "error": f"no_{required_key.lower()}"}
         cmd = [
             aider_bin,
             "--message", goal,
@@ -49,6 +49,11 @@ class AiderAgent(Agent):
             "--no-show-model-warnings",
             "--no-check-update",
         ]
+        # Pass per-model overrides so frontier reasoning models (Opus 4.7,
+        # GPT-5.x, Gemini 3.x) don't choke on aider's default temperature=0.
+        settings_file = Path.cwd() / "aider-model-settings.yml"
+        if settings_file.exists():
+            cmd.extend(["--model-settings-file", str(settings_file)])
         # If the task workdir is not its own git repo, pass --no-git so aider
         # doesn't walk up the directory tree to a parent .git (which then makes
         # it use absolute paths it refuses to add to the chat). PR-mined tasks
@@ -62,13 +67,13 @@ class AiderAgent(Agent):
                 cwd=workdir,
                 capture_output=True,
                 text=True,
-                timeout=600,
+                timeout=1200,
                 env=os.environ.copy(),
             )
         except subprocess.TimeoutExpired:
             log_path.write_text(
                 f"$ {aider_bin} --message ... --model {model}\n"
-                f"TIMEOUT after 600s\n"
+                f"TIMEOUT after 1200s\n"
             )
             return {"agent": self.name, "model": model, "error": "timeout"}
 
@@ -84,6 +89,19 @@ class AiderAgent(Agent):
             "model": model,
             "returncode": proc.returncode,
         }
+
+
+def _required_env_key(model: str) -> str:
+    """Return the env var aider/litellm needs for the given model. Empty if
+    we don't have a confident mapping (let aider raise its own error)."""
+    m = model.lower()
+    if m.startswith("anthropic/") or m.startswith("claude"):
+        return "ANTHROPIC_API_KEY"
+    if m.startswith("openai/") or m.startswith("gpt"):
+        return "OPENAI_API_KEY"
+    if m.startswith("gemini/") or m.startswith("gemini-") or m.startswith("vertex_ai"):
+        return "GEMINI_API_KEY"
+    return ""
 
 
 def _find_aider() -> Optional[str]:

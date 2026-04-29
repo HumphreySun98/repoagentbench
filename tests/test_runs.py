@@ -169,10 +169,10 @@ def test_render_report_groups_by_task_and_aggregates_by_agent(tmp_path):
     # Per-task sections present
     assert "## `click`" in report
     assert "## `demo`" in report
-    # Agent aggregate present and reflects the 2 mock-fix passes vs 1 aider fail
-    assert "## Aggregate by agent" in report
-    assert "| mock-fix | 2 | 2 | 100% |" in report
-    assert "| aider | 1 | 0 | 0% |" in report
+    # Aggregate present and reflects the 2 mock-fix passes vs 1 aider fail
+    assert "## Aggregate by agent + model" in report
+    assert "| mock-fix | — | 2 | 2 | 100% |" in report
+    assert "| aider | — | 1 | 0 | 0% |" in report
 
 
 def test_render_report_filters_by_task(tmp_path):
