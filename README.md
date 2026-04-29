@@ -1,5 +1,6 @@
 # RepoAgentBench
 
+[![PyPI version](https://img.shields.io/pypi/v/repoagentbench.svg)](https://pypi.org/project/repoagentbench/)
 [![Tests](https://github.com/HumphreySun98/repoagentbench/actions/workflows/test.yml/badge.svg)](https://github.com/HumphreySun98/repoagentbench/actions/workflows/test.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -49,7 +50,8 @@ RepoAgentBench dodges both problems. It is local-first: your code never leaves y
 ## Quickstart
 
 ```bash
-pip install -e .
+pip install repoagentbench
+git clone https://github.com/HumphreySun98/repoagentbench.git && cd repoagentbench
 
 # Smoke test (no API key, no CLI install required)
 repoagentbench run-one --task examples/demo --agent mock-fix
