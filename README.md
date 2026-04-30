@@ -9,30 +9,36 @@
 
 Turn your merged PRs into reproducible coding-agent benchmarks. Find out which AI coding agent actually works on **your** repo, **your** tests, **your** constraints — with structured, replayable, diffable run artifacts instead of opaque chat logs.
 
-Today: `mock-fix` (oracle baseline), `claude-code`, and `aider` adapters. Codex CLI and Gemini CLI are next — see [Roadmap](#roadmap).
+Today: `mock-fix` (oracle baseline), `claude-code` (native Anthropic CLI), and `aider` (multi-vendor: Opus 4.7, GPT-5.5, Sonnet 4.6, Gemini 3.1 Pro all verified). Codex CLI and Gemini CLI native adapters are next — see [Roadmap](#roadmap).
 
 ## Sample leaderboard
 
-A frontier-model sweep on Click PR #3299 ([Fix speculative empty string check](https://github.com/pallets/click/pull/3299), merged 2026-04-08), driven by `aider` against four current flagship models plus a `mock-fix` oracle that applies the PR's actual diff:
+Three Click bug-fix PRs × four current vendor flagships (driven by `aider`) + `mock-fix` oracle + native `claude-code`. Tasks were mined with `repoagentbench infer` and run with the harness's default settings.
 
-| Agent | Model | Status | Duration | Cost | What it did |
-|---|---|---|---|---|---|
-| mock-fix | (oracle) | **PASS** | 8.8s | — | Applies the actual PR diff: `isinstance(default, str) and default == ""` |
-| aider | `anthropic/claude-sonnet-4-6` | **FAIL** | 610s | $0.72 | Wrote `try/except TypeError` — but the test class raises `ValueError`, so the exception still propagates |
-| aider | `anthropic/claude-opus-4-7` | **FAIL** | 36s | $0.58 | Replaced `default == ""` with `default == str()` — completely equivalent at runtime; comment claimed it "avoids TypeError" but it's a no-op |
-| aider | `openai/gpt-5.5` | **PASS** | 272s | $1.58 | Wrote the canonical PR fix verbatim: `isinstance(default, str) and default == ""` |
-| aider | `gemini/gemini-3.1-pro-preview` | **FAIL** | 939s | $0.03+ | Edited the wrong function entirely — patched a `value == ""` check inside `_value_is_missing()` (line 2408), but the bug is in `get_help_extra()` (line 3113); the test still calls into the unpatched code path |
+| Model / Agent | [#3299][p1] | [#3240][p2] | [#3364][p3] | Pass rate |
+|---|---|---|---|---|
+| `mock-fix` (oracle, applies actual PR diff) | PASS | PASS | PASS | **3 / 3** |
+| `aider` + `anthropic/claude-opus-4-7` | FAIL | **PASS** | **PASS** | 2 / 3 |
+| `aider` + `gemini/gemini-3.1-pro-preview` | FAIL | **PASS** | **PASS** | 2 / 3 |
+| `aider` + `anthropic/claude-sonnet-4-6` | FAIL | FAIL | **PASS** | 1 / 3 |
+| `aider` + `openai/gpt-5.5` | **PASS** | FAIL | FAIL | 1 / 3 |
+| `claude-code` (native CLI) | **PASS** | — | — | 1 / 1 |
 
-Aggregate across the four frontier-flagship runs:
+[p1]: https://github.com/pallets/click/pull/3299
+[p2]: https://github.com/pallets/click/pull/3240
+[p3]: https://github.com/pallets/click/pull/3364
 
-| Vendor flagship | Pass rate on Click PR #3299 |
-|---|---|
-| OpenAI GPT-5.5 | 1 / 1 |
-| Anthropic Opus 4.7 | 0 / 1 |
-| Anthropic Sonnet 4.6 | 0 / 1 |
-| Google Gemini 3.1 Pro | 0 / 1 |
+**No frontier model passed all three PRs.** Each one fails on a different bug. Specifically:
 
-This is exactly the failure topology public benchmarks hide. The PR is a one-line bug fix, the failure mode is a Python edge case (custom `__eq__` raising `ValueError`), and **three of the four current vendor flagships failed in three different ways**: Sonnet 4.6 over-engineered the wrong exception class, Opus 4.7 produced a no-op fix that "looks right," and Gemini 3.1 Pro patched the wrong function entirely. Only GPT-5.5 reproduced the canonical PR fix. The harness surfaces this because every run executes the project's real test suite against each agent's actual diff — captured in [`diff.patch`](#run-artifacts), [`agent.log`](#run-artifacts), and [`events.jsonl`](#run-artifacts) for every run.
+- **PR #3299** (`isinstance(default, str) and default == ""` fix): only **GPT-5.5** matched the canonical one-line fix. **Opus 4.7** wrote `default == str()` — a literal no-op (`str()` evaluates to `""`) with a comment claiming it "avoids TypeError." **Sonnet 4.6** wrote `try/except TypeError` but the test class raises `ValueError`. **Gemini 3.1 Pro** patched the wrong function entirely (line 2408 `_value_is_missing` instead of line 3113 `get_help_extra`).
+
+- **PR #3299, harness comparison:** the same Anthropic model family that failed via `aider` **passes via `claude-code`** — the native agent harness wrote the canonical `isinstance` fix where aider+Opus produced a no-op. **Same model, different harness, different result.** The agent harness is part of the system under test, not just a passthrough.
+
+- **PR #3240 / PR #3364:** the win/loss pattern flips — Opus and Gemini pass both, GPT-5.5 fails both, Sonnet flips. The "winner" on one PR is the "loser" on the next.
+
+These are real-codebase failure modes you cannot see on public benchmarks. They surface here because every run executes the project's real test suite against each agent's actual diff — captured in [`diff.patch`](#run-artifacts), [`agent.log`](#run-artifacts), and [`events.jsonl`](#run-artifacts) for inspection.
+
+> Total real-API spend on this leaderboard: ~$11. Reproduce with `repoagentbench run-one --task tasks/click-pr-3299 --agent aider` (set `RAB_AIDER_MODEL` and the appropriate vendor key first).
 
 ## Why
 
