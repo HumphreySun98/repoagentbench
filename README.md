@@ -32,11 +32,54 @@ Three Click bug-fix PRs × four current vendor flagships (driven by `aider`) + `
 [p2]: https://github.com/pallets/click/pull/3240
 [p3]: https://github.com/pallets/click/pull/3364
 
-**No frontier model passed all three PRs.** Each one fails on a different bug. Specifically:
+**No frontier model passed all three PRs.** Each fails on a different bug.
 
-- **PR #3299** (`isinstance(default, str) and default == ""` fix): only **GPT-5.5** matched the canonical one-line fix. **Opus 4.7** wrote `default == str()` — a literal no-op (`str()` evaluates to `""`) with a comment claiming it "avoids TypeError." **Sonnet 4.6** wrote `try/except TypeError` but the test class raises `ValueError`. **Gemini 3.1 Pro** patched the wrong function entirely (line 2408 `_value_is_missing` instead of line 3113 `get_help_extra`).
+### What each agent actually wrote on PR #3299
 
-- **PR #3299, harness comparison:** the same Anthropic model family that failed via `aider` **passes via `claude-code`** — the native agent harness wrote the canonical `isinstance` fix where aider+Opus produced a no-op. **Same model, different harness, different result.** The agent harness is part of the system under test, not just a passthrough.
+The bug: `default_value == ""` raises `ValueError` when `default_value` is an object with a strict `__eq__`. The whole PR is a one-line fix:
+
+```diff
+- elif default_value == "":
++ elif isinstance(default_value, str) and default_value == "":
+```
+
+What the four frontier flagships produced (full diffs in `.runs/<run_id>/diff.patch`):
+
+```diff
+✓ openai/gpt-5.5                    -- canonical, identical to PR
+- elif default_value == "":
++ elif isinstance(default_value, str) and default_value == "":
+
+
+✓ claude-code (Anthropic, native CLI)  -- canonical, identical to PR
+- elif default_value == "":
++ elif isinstance(default_value, str) and default_value == "":
+
+
+✗ aider + anthropic/claude-opus-4-7  -- a literal no-op
+- elif default_value == "":
++ elif default_value == str():       # str() evaluates to ""
+                                     # so this is the same comparison
+                                     # (comment claims it "avoids TypeError")
+
+
+✗ aider + anthropic/claude-sonnet-4-6  -- caught the wrong exception
+- elif default_value == "":
++ try:
++     is_empty_string = default_value == ""
++ except TypeError:                  # but the test raises ValueError
++     is_empty_string = False        # so the test still fails
+
+
+✗ aider + gemini/gemini-3.1-pro-preview  -- patched the wrong function
+  # Line 2408 in _value_is_missing(), nowhere near the bug:
+- if (self.nargs != 1 or self.multiple) and value == ():
++ if (self.nargs != 1 or self.multiple) and (value == () or value == ""):
+  # The actual bug is at line 3113 in get_help_extra() — untouched.
+```
+
+> [!IMPORTANT]
+> **Same model family, different harness, different outcome.** Both rows above used Anthropic models — `aider + Opus 4.7` (FAIL, no-op fix) vs `claude-code` (PASS, canonical fix) on the **identical PR**. The agent harness is part of the system under test, not a passthrough. This is the kind of finding you cannot get from a model leaderboard.
 
 - **PR #3240 / PR #3364:** the win/loss pattern flips — Opus and Gemini pass both, GPT-5.5 fails both, Sonnet flips. The "winner" on one PR is the "loser" on the next.
 
