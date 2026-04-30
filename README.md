@@ -38,8 +38,9 @@ Three Click bug-fix PRs × four current vendor flagships (driven by `aider`) + `
 
 - **PR #3240 / PR #3364:** the win/loss pattern flips — Opus and Gemini pass both, GPT-5.5 fails both, Sonnet flips. The "winner" on one PR is the "loser" on the next.
 
-These are real-codebase failure modes you cannot see on public benchmarks. They surface here because every run executes the project's real test suite against each agent's actual diff — captured in [`diff.patch`](#run-artifacts), [`agent.log`](#run-artifacts), and [`events.jsonl`](#run-artifacts) for inspection.
+These are real-codebase failure modes you cannot see on public benchmarks. They surface here because every run executes the project's real test suite against each agent's actual diff — captured in `diff.patch`, `agent.log`, and `events.jsonl` for inspection (see [How it works](#how-it-works)).
 
+> [!NOTE]
 > Total real-API spend on this leaderboard: ~$11. Reproduce with `repoagentbench run-one --task tasks/click-pr-3299 --agent aider` (set `RAB_AIDER_MODEL` and the appropriate vendor key first).
 
 ## Why
@@ -51,68 +52,72 @@ Public benchmarks tell you which agent wins on curated, generic tasks. They do n
 
 RepoAgentBench dodges both problems. It is local-first: your code never leaves your machine. The differentiator: **every merged PR can become a benchmark task.** PR description → goal. PR tests → acceptance criteria. Diff (split into test and source halves) → broken starting state. Mine PRs that post-date the model's training cutoff and you have a contamination-free benchmark of your own.
 
-## Status
-
-**v0.1.0 — early alpha.** Single-task runner with per-task venv isolation, PR-to-task mining (test/source patch splitting), `verify.sh` auto-generation (`requirements*.txt`, `[project.optional-dependencies]`, PEP 735 `[dependency-groups]`), structured run artifacts (`manifest.json`, `events.jsonl`, `verification.json`), `report` / `replay` / `diff` subcommands, and adapters for `mock-fix` / `claude-code` / `aider`. Validated end-to-end on a real OSS PR (Click #3299) with real Claude API. Codex CLI / Gemini CLI adapters, parallel multi-agent eval, and statistical reporting are next. See [Roadmap](#roadmap).
-
 ## Quickstart
+
+**30-second smoke test** (no API key, mock-fix oracle just applies a known diff):
 
 ```bash
 pip install repoagentbench
 git clone https://github.com/HumphreySun98/repoagentbench.git && cd repoagentbench
-
-# Smoke test (no API key, no CLI install required)
 repoagentbench run-one --task examples/demo --agent mock-fix
 ```
 
-For real agents:
+**Real agent on a real PR**:
 
 ```bash
-# Aider (recommended path: dedicated conda env so Aider's deps don't conflict with task deps)
-conda create -n aider-rab python=3.11 -y
-conda run -n aider-rab pip install aider-chat
-export ANTHROPIC_API_KEY=sk-ant-...
-repoagentbench run-one --task examples/demo --agent aider
+# Mine a benchmark task from any merged GitHub PR (gh CLI required)
+repoagentbench infer --from-pr https://github.com/pallets/click/pull/3299 --out tasks/click-3299
 
-# Claude Code
-# Install Claude Code CLI per https://docs.claude.com/en/docs/claude-code, then:
-repoagentbench run-one --task examples/demo --agent claude-code
+# Option A — Aider (multi-vendor; recommended for the leaderboard)
+conda create -n aider-rab python=3.11 -y && conda run -n aider-rab pip install aider-chat
+export ANTHROPIC_API_KEY=sk-ant-...        # or OPENAI_API_KEY / GEMINI_API_KEY
+RAB_AIDER_MODEL=anthropic/claude-opus-4-7 \
+    repoagentbench run-one --task tasks/click-3299 --agent aider
+
+# Option B — Claude Code (native)
+repoagentbench run-one --task tasks/click-3299 --agent claude-code
+
+repoagentbench report                       # markdown leaderboard of every run
 ```
 
-Aider defaults to `anthropic/claude-sonnet-4-6`. Override with `RAB_AIDER_MODEL=anthropic/claude-opus-4-7` (or any LiteLLM-compatible model). Override the binary path with `RAB_AIDER_BIN=/path/to/aider`.
+Aider model is set via `RAB_AIDER_MODEL` (any LiteLLM-compatible string). Aider binary discovery: `RAB_AIDER_BIN` env var > `~/miniforge/envs/aider-rab/bin/aider` > `$PATH`. Claude Code is auto-discovered from VSCode/Cursor extension dirs.
 
-## Mine a benchmark task from any merged GitHub PR
+## How it works
+
+**Mining a PR into a task** (`infer`):
+
+1. Pull the PR title, body, base SHA, and unified diff via `gh`.
+2. Clone the repo at the PR's base commit. `.git` is preserved so projects using `setuptools_scm` / `hatch-vcs` install cleanly.
+3. Split the PR diff into `solution_tests.patch` and `solution_source.patch`. Apply the test portion to the task folder so the starting state is **"post-PR tests vs pre-PR source"** — without this, `pre_verify` would trivially pass on PRs that add new tests.
+4. Auto-generate `verify.sh` for the detected test framework. For pytest projects, the generated script discovers and installs from `requirements*.txt`, `[project.optional-dependencies]`, and PEP 735 `[dependency-groups]`.
+
+**Running a task** (`run-one`):
+
+1. Copy the task into a fresh `.runs/<run_id>/workdir/`.
+2. Bootstrap a per-task venv (`.venv-rab/`) inside the workdir. Pip-install the project under test there — never into your system Python.
+3. Run `verify.sh` once (`pre_verify`, must FAIL — establishes a broken baseline).
+4. Invoke the agent against the goal.
+5. Run `verify.sh` again (`post_verify`, must PASS — proves the fix).
+6. Emit a self-describing artifact bundle (see below).
+
+**Aggregating runs** (`report` / `replay` / `diff`):
 
 ```bash
-repoagentbench infer \
-    --from-pr https://github.com/pallets/click/pull/3299 \
-    --out tasks/click-pr-3299
-
-repoagentbench run-one --task tasks/click-pr-3299 --agent mock-fix
-repoagentbench run-one --task tasks/click-pr-3299 --agent aider
+repoagentbench report                          # markdown leaderboard of every run
+repoagentbench report --task click-pr-3299     # filter to one task
+repoagentbench replay --run <id_or_prefix>     # re-run same task+agent (variance check)
+repoagentbench diff   --run <a> --run <b>      # side-by-side comparison
 ```
 
-The `infer` command:
-
-- pulls the PR's title, body, base SHA, and unified diff via `gh`
-- clones the repo at the PR's base commit (preserves `.git` so projects using `setuptools_scm` / `hatch-vcs` / similar still install)
-- splits the PR diff into `solution_tests.patch` and `solution_source.patch`, then applies the test portion to the task folder so the starting state is "post-PR tests vs pre-PR source" — without that, `pre_verify` would trivially pass on PRs that add new tests
-- writes `goal.md` (PR title + body), `solution.patch` (full diff for reference), and `task.json` (source metadata)
-- **auto-generates `verify.sh`** based on the test framework it detects (pytest / `go test` / `cargo test` / `npm test`). For pytest projects, the generated script discovers and installs from `requirements*.txt`, `[project.optional-dependencies]` extras, and PEP 735 `[dependency-groups]`. When no framework can be detected it writes a `TODO.md` explaining what to fill in.
-
-> Requires the [`gh` CLI](https://cli.github.com/) installed and authenticated.
-
-## Run artifacts
-
-Each run-dir is a self-describing bundle:
+<details>
+<summary><b>Run artifact layout</b></summary>
 
 ```
 .runs/<ISO_ts>__<task>__<agent>__<short_id>/
   manifest.json        # run_id, task_id, agent, base_commit, started_at, harness_version
   status.json          # final outcome: status, failure_stage, summary, durations
   verification.json    # pre/post phases: command, passed, exit_code, duration_seconds
-  events.jsonl         # streaming lifecycle events with millisecond timestamps
-                       # (run.started, verify.*, agent.*, diff.captured, run.finished)
+  events.jsonl         # streaming lifecycle events with ms timestamps
   pre_verify.log       # raw test output before the agent ran (must fail)
   post_verify.log      # raw test output after the agent ran (must pass)
   agent.log            # what the agent did (stdout + stderr)
@@ -121,20 +126,22 @@ Each run-dir is a self-describing bundle:
   workdir/             # isolated copy of the task (with `.venv-rab/` inside)
 ```
 
-Run ids are sortable and human-readable: `20260429T060601Z__click-pr-3299__mock-fix__daf638`. Each task runs inside its own `.venv-rab` venv so installing the project under test does not pollute your system Python or break the harness itself.
+Run ids are sortable and human-readable: `20260429T060601Z__click-pr-3299__mock-fix__daf638`.
 
-## Aggregate, replay, compare
+</details>
 
-```bash
-repoagentbench report                              # markdown leaderboard of every run
-repoagentbench report --task click-pr-3299         # filter to one task
-repoagentbench report --output report.md           # write to file
+## Caveats
 
-repoagentbench replay --run <run_id_or_prefix>     # re-run the same task+agent (variance check)
-repoagentbench diff   --run <id_a> --run <id_b>    # side-by-side comparison
-```
+> [!WARNING]
+> This is v0.1.0 / early alpha. Concrete things you should know before reading too much into the leaderboard:
 
-`report` groups runs by task and includes a per-agent aggregate (runs, passed, pass rate, average duration). `replay` reads `manifest.json` so the same task and agent are reused — useful for measuring run-to-run variance or re-validating after upgrading the harness. `diff` highlights the fields that changed between two runs.
+- **n=3 is small.** The Click sweep above is enough to falsify "Model X is best" but not enough to rank models. The point of the project is to let you build your own benchmark on your own PRs — not to publish a definitive ranking from this README.
+- **Single project, single language so far.** The verified leaderboard is all Python (Click). The verify.sh generator covers Go / Cargo / npm too, but those paths haven't been stress-tested end-to-end. If you try a non-Python repo and hit a snag, file an issue.
+- **Aider is one harness among many.** Aider's repo-map / edit format / summarizer all influence outcomes. The native `claude-code` row in the leaderboard already shows this. Codex CLI and Gemini CLI native adapters are next (v0.2).
+- **PR selection bias.** I picked PRs that compile, have a clean test diff, and don't gate on optional deps. About 30–50% of merged PRs in a typical Python repo will fail one of those checks today; better mining heuristics are roadmap work.
+- **No statistical confidence yet.** Pass / fail is the metric; bootstrap CIs and run-to-run variance estimation are v0.3.
+
+If any of these would change your interpretation of the leaderboard, please tell me — happy to adjust the README or the harness.
 
 ## How is this different from SWE-bench / CodeScaleBench?
 
@@ -150,17 +157,10 @@ repoagentbench diff   --run <id_a> --run <id_b>    # side-by-side comparison
 
 ## Roadmap
 
-- [x] v0.0.1 — single-task runner with `mock-fix` and `claude-code` adapters
-- [x] v0.0.2 — `repoagentbench infer --from-pr <url>` mines tasks from merged GitHub PRs
-- [x] v0.0.3 — `infer` auto-generates `verify.sh` for pytest / Go / Cargo / npm projects
-- [x] v0.0.4 — `infer` splits PR diff into test/source patches so PR-mined tasks have a valid pre-fix starting state
-- [x] v0.0.5 — per-task venv isolation; `verify.sh` handles `requirements*.txt` and PEP 735 `[dependency-groups]`
-- [x] v0.0.6 — structured run-dir (`manifest.json`, `events.jsonl`, `verification.json`); sortable human-readable `run_id`s
-- [x] v0.0.7 — `report` / `replay` / `diff` subcommands
-- [x] v0.1.0 — Aider adapter; first real Claude API leaderboard data
-- [ ] v0.2 — Codex CLI adapter; parallel multi-agent eval; HTML report
-- [ ] v0.3 — bootstrap confidence intervals, pairwise statistical comparison
-- [ ] v0.4 — real-repo demo suite (3 OSS repos × historical PRs × all agents)
+- [x] **v0.1.0** — single-task runner, PR-to-task mining (test/source split, `.git` preserved, PEP 735 dep-groups), per-task venv isolation, structured run-dir (`manifest.json` / `events.jsonl` / `verification.json`), `report` / `replay` / `diff` subcommands, adapters for `mock-fix` / `claude-code` / `aider` (4 frontier models verified). [Full version history](https://github.com/HumphreySun98/repoagentbench/commits/main).
+- [ ] **v0.2** — Codex CLI + Gemini CLI native adapters; parallel multi-agent eval; HTML report.
+- [ ] **v0.3** — bootstrap confidence intervals, pairwise statistical comparison, run-to-run variance estimation.
+- [ ] **v0.4** — real-repo demo suite (3+ OSS repos × historical PRs × all adapters); permission modes (readonly / workspace-write / bypass).
 
 ## License
 
