@@ -11,6 +11,8 @@ Turn your merged PRs into reproducible coding-agent benchmarks. Find out which A
 
 Today: `mock-fix` (oracle baseline), `claude-code` (native Anthropic CLI), and `aider` (multi-vendor: Opus 4.7, GPT-5.5, Sonnet 4.6, Gemini 3.1 Pro all verified). Codex CLI and Gemini CLI native adapters are next — see [Roadmap](#roadmap).
 
+[![asciicast](https://asciinema.org/a/3LhSATzz3ckQhbUf.svg)](https://asciinema.org/a/3LhSATzz3ckQhbUf)
+
 ## Sample leaderboard
 
 Three Click bug-fix PRs × four current vendor flagships (driven by `aider`) + `mock-fix` oracle + native `claude-code`. Tasks were mined with `repoagentbench infer` and run with the harness's default settings.
