@@ -15,7 +15,9 @@ Today: `mock-fix` (oracle baseline), `claude-code` (native Anthropic CLI), and `
 
 ## Sample leaderboard
 
-Three Click bug-fix PRs × four current vendor flagships (driven by `aider`) + `mock-fix` oracle + native `claude-code`. Tasks were mined with `repoagentbench infer` and run with the harness's default settings.
+![Pass / fail across 3 real PRs — no frontier model passed all three](docs/leaderboard.png)
+
+Three Click bug-fix PRs × four current vendor flagships (driven by `aider`) + `mock-fix` oracle + native `claude-code`. Tasks were mined with `repoagentbench infer` and run with the harness's default settings. Regenerate with `python scripts/make_leaderboard_chart.py`.
 
 | Model / Agent | [#3299][p1] | [#3240][p2] | [#3364][p3] | Pass rate |
 |---|---|---|---|---|
